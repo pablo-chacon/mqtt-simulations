@@ -7,6 +7,7 @@ Synthetic MQTT traffic for UrbanOS, used to stress the subscriber, the geodata p
 This repo lets you spin up hundreds of virtual clients that publish movement points on the UrbanOS topic format.
 
 **UrbanOS PoC**, [https://github.com/pablo-chacon/UrbanOS-POC](https://github.com/pablo-chacon/UrbanOS-POC)
+
 **Client templates**, [https://github.com/pablo-chacon/mqtt-client-templates](https://github.com/pablo-chacon/mqtt-client-templates)
 
 ## What this is
@@ -217,7 +218,9 @@ This repository generates synthetic movement, it does not include personal data,
 ## Links
 
 UrbanOS PoC, [https://github.com/pablo-chacon/UrbanOS-POC](https://github.com/pablo-chacon/UrbanOS-POC)
+
 Client templates, [https://github.com/pablo-chacon/mqtt-client-templates](https://github.com/pablo-chacon/mqtt-client-templates)
+
 Sovereign, Self-Healing AI, [https://github.com/pablo-chacon/Sovereign-Self-Healing-AI](https://github.com/pablo-chacon/Sovereign-Self-Healing-AI)
 
 ---
