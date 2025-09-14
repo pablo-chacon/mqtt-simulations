@@ -1,20 +1,27 @@
 from datetime import datetime, timedelta
-import os
-import json
-import time
-import uuid
-import random
-
+import os, json, uuid, random
+from gevent import sleep  # non-blocking sleep for Locust
 import paho.mqtt.client as mqtt
 import locust
 
-# ── Config
+# ── Config (env overrides supported)
 BROKER = os.getenv("MQTT_BROKER", "localhost")
 PORT = int(os.getenv("MQTT_PORT", 1883))
 TOPIC_TEMPLATE = os.getenv("MQTT_TOPIC_TEMPLATE", "client/{client_id}/session/{session_id}/")
 SESSION_HOURS = float(os.getenv("SESSION_HOURS", "26"))
 POINT_INTERVAL_MIN = int(os.getenv("POINT_INTERVAL_MIN", "2"))
 SEND_INTERVAL_SECONDS = float(os.getenv("SEND_INTERVAL_SECONDS", "1.5"))
+
+# HTTP host for Locust (can also be set with -H flag)
+HTTP_HOST = os.getenv("HTTP_HOST", "http://0.0.0.0:8181")
+
+# Endpoints (hit with ?client_id=...)
+API_ENDPOINTS = [
+    "/api/astar_routes",
+    "/api/mapf_routes",
+    "/api/view_routes_astar_mapf_latest",
+    "/api/view_eta_accuracy_seconds",
+]
 
 TRANSIT_ACTIVITIES = ["walking", "cycling", "driving", "public_transport"]
 
@@ -75,10 +82,19 @@ def generate_stream(client_id, session_start, per_point_min):
         clock += timedelta(minutes=commute + random.choice([15, 30, 45, 60, 90, 120]))
         i += 1
 
-class MqttStreamingUser(locust.User):
+class MqttAndHttpUser(locust.HttpUser):
+    """
+    Sends MQTT points continuously and periodically hits HTTP APIs to
+    observe latency/throughput in the Locust UI.
+    """
+    # Locust host (can be overridden with -H)
+    host = HTTP_HOST
+
+    # pace of *tasks* (MQTT send task uses this interval)
     wait_time = locust.constant(SEND_INTERVAL_SECONDS)
 
     def on_start(self):
+        # --- session + topic
         self.client_id = generate_client_id()
         self.session_id = generate_session_id()
         self.session_end = datetime.utcnow()
@@ -86,14 +102,19 @@ class MqttStreamingUser(locust.User):
         self.start_iso = self.session_start.isoformat()
         self.end_iso = self.session_end.isoformat()
         self.topic = TOPIC_TEMPLATE.format(client_id=self.client_id, session_id=self.session_id)
-        self.stream = generate_stream(self.client_id, self.session_start, POINT_INTERVAL_MIN)
 
-        self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.client_id, clean_session=False)
+        # --- MQTT
+        self.stream = generate_stream(self.client_id, self.session_start, POINT_INTERVAL_MIN)
+        self.mqtt_client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=self.client_id,
+            clean_session=False
+        )
         self.mqtt_client.user_data_set({"client_id": self.client_id})
         self.mqtt_client.connect(BROKER, PORT, keepalive=300)
         self.mqtt_client.loop_start()
 
-    @locust.task
+    @locust.task(5)  # higher weight: happens more often
     def send_point(self):
         point = next(self.stream)
         payload = {
@@ -101,9 +122,22 @@ class MqttStreamingUser(locust.User):
             "session_id": self.session_id,
             "start_time": self.start_iso,
             "end_time": self.end_iso,
-            "trajectory": [point]
+            "trajectory": [point],
         }
+        # QoS=1 so broker acks and late delivery is handled by persistence
         self.mqtt_client.publish(self.topic, json.dumps(payload), qos=1)
+
+    @locust.task(1)  # lower weight: run occasionally
+    def ping_apis_for_client(self):
+        # Hit each endpoint; Locust will record response times and status
+        params = {"client_id": self.client_id}
+        for ep in API_ENDPOINTS:
+            # 'name' groups stats in the UI
+            name = f"GET {ep}"
+            self.client.get(ep, params=params, name=name, timeout=15)
+
+        # pause 3 seconds before the next bundle of API checks
+        sleep(3)
 
     def on_stop(self):
         self.mqtt_client.loop_stop()
