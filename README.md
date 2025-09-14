@@ -103,6 +103,12 @@ The simulations send a compact envelope with one point per message, the subscrib
 
 Notes, QoS is 1, retain is false, client ids are synthetic and session ids are numeric for simplicity, activities include walking, cycling, driving, and public transport, each client moves between four stable POIs and advances time along each leg.
 
+## Endpoint R-T-D examples
+1. GET /api/astar_routes
+2. GET /api/mapf_routes
+3. GET /api/view_eta_accuracy_seconds
+4. GET /api/view_routes_astar_mapf_latest   
+
 ## Adjusting realism
 
 1. `POINT_INTERVAL_MIN` controls density along a leg.
